@@ -1,0 +1,20 @@
+services:
+  wxpush:
+    build: .
+    image: wxpush-nas:2.1.0
+    container_name: wxpush
+    ports:
+      - "3939:3939"
+    environment:
+      NODE_ENV: production
+      PORT: 3939
+      DATA_DIR: /app/data
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?请在 .env 中设置 ADMIN_PASSWORD}
+      APP_KEY: ${APP_KEY:?请在 .env 中设置 APP_KEY}
+      API_TOKEN: ${API_TOKEN:?请在 .env 中设置 API_TOKEN}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true

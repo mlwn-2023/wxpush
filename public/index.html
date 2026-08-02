@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101b17">
+  <title>WXPush 管理台</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="loginView" class="login-shell">
+    <section class="login-brand">
+      <div class="brand-mark large"><span></span><span></span></div>
+      <div>
+        <p class="eyebrow">WXPush · SELF HOSTED</p>
+        <h1>让每一条提醒，<br>都准时抵达。</h1>
+        <p class="lead">为家庭服务器与个人服务打造的微信消息中枢。私有部署，简洁可靠。</p>
+      </div>
+      <div class="signal-card">
+        <span class="live-dot"></span>
+        <div><strong>服务待命</strong><small>Local console · Encrypted storage</small></div>
+        <svg viewBox="0 0 80 30" aria-hidden="true"><path d="M1 22 C12 22,13 6,24 15 S42 24,50 10 S65 18,79 4"/></svg>
+      </div>
+    </section>
+    <section class="login-panel">
+      <form id="loginForm" class="login-form">
+        <div class="mobile-logo"><div class="brand-mark"><span></span><span></span></div> WXPush</div>
+        <p class="eyebrow green">WELCOME BACK</p>
+        <h2>登录管理台</h2>
+        <p class="muted">输入管理员凭据以继续</p>
+        <label>用户名<input name="username" autocomplete="username" value="admin" required></label>
+        <label>密码<input name="password" type="password" autocomplete="current-password" placeholder="请输入管理员密码" required></label>
+        <p id="loginError" class="form-error"></p>
+        <button class="primary wide" type="submit">进入控制台 <span>→</span></button>
+        <p class="security-note">● 本地私有服务 · 凭据不会离开你的设备</p>
+      </form>
+    </section>
+  </div>
+
+  <div id="appView" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="logo"><div class="brand-mark"><span></span><span></span></div><div><b>WXPush</b><small>消息管理台</small></div></div>
+      <nav id="nav">
+        <button class="active" data-page="dashboard"><i>⌂</i>总览</button>
+        <button data-page="compose"><i>↗</i>发送消息</button>
+        <button data-page="schedules"><i>◴</i>定时发送</button>
+        <button data-page="templates"><i>▤</i>消息模板</button>
+        <button data-page="recipients"><i>♙</i>收件人</button>
+        <button data-page="history"><i>◷</i>推送记录</button>
+        <p>系统</p>
+        <button data-page="settings"><i>⚙</i>系统设置</button>
+        <button data-page="api"><i>⌘</i>API 接入</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="service-pill"><span class="live-dot"></span><div><b>服务运行中</b><small id="sideStatus">配置待检查</small></div></div>
+        <button id="logoutBtn" class="logout">退出登录</button>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button id="menuBtn" class="menu-btn">☰</button>
+        <div><p id="breadcrumb">管理台 / 总览</p><h2 id="pageTitle">早上好，管理员</h2></div>
+        <div class="top-actions"><span class="clock" id="clock"></span><div class="avatar">管</div></div>
+      </header>
+
+      <div class="content">
+        <section id="page-dashboard" class="page active">
+          <div id="configBanner" class="notice hidden"><span>!</span><div><b>完成微信配置以开始推送</b><p>填写公众号 AppID、AppSecret 和模板 ID。</p></div><button data-goto="settings">现在配置</button></div>
+          <div class="hero-row">
+            <div><p class="eyebrow green">OVERVIEW</p><h1>消息触达，<em>一目了然。</em></h1><p class="muted">查看服务状态与最近推送表现。</p></div>
+            <button class="primary" data-goto="compose">＋ 发送新消息</button>
+          </div>
+          <div class="stats-grid">
+            <article><div class="stat-icon green-bg">↗</div><p>今日推送</p><strong id="statToday">0</strong><small>条消息</small></article>
+            <article><div class="stat-icon">✓</div><p>成功推送</p><strong id="statSuccess">0</strong><small id="successRate">成功率 0%</small></article>
+            <article><div class="stat-icon amber-bg">♙</div><p>有效收件人</p><strong id="statRecipients">0</strong><small>已启用</small></article>
+            <article><div class="stat-icon dark-bg">∑</div><p>累计推送</p><strong id="statTotal">0</strong><small>全部记录</small></article>
+          </div>
+          <div class="panel-grid">
+            <article class="panel span-2"><div class="panel-head"><div><h3>最近推送</h3><p>最近 6 条消息状态</p></div><button class="text-btn" data-goto="history">查看全部 →</button></div><div id="recentList" class="message-list empty-state">暂无推送记录</div></article>
+            <article class="panel"><div class="panel-head"><div><h3>服务状态</h3><p>运行环境检查</p></div><span class="status-tag">在线</span></div><div class="health-ring"><div><strong>100</strong><small>健康度</small></div></div><ul class="health-list"><li><span>API 服务</span><b>运行正常</b></li><li><span>数据存储</span><b>已连接</b></li><li><span>微信通道</span><b id="wechatHealth">待配置</b></li></ul></article>
+          </div>
+        </section>
+
+        <section id="page-compose" class="page">
+          <div class="section-title"><div><p class="eyebrow green">NEW MESSAGE</p><h1>发送消息</h1><p>编辑内容并选择接收对象。</p></div></div>
+          <form id="sendForm" class="editor-grid">
+            <article class="panel form-panel"><label>套用常用模板<select id="composeTemplate"><option value="">不使用模板</option></select></label><label>消息标题 <span id="titleCount">0 / 40</span><input name="title" maxlength="40" placeholder="例如：服务器状态通知" required></label><label>消息内容 <span id="contentCount">0 / 500</span><textarea name="content" maxlength="500" rows="10" placeholder="输入要推送的消息内容…" required></textarea></label><div class="recipient-pick"><div><b>接收对象</b><p>选择所有已启用的收件人，或单独选择。</p></div><label class="switch-row"><input id="sendAll" type="checkbox" checked><span></span>发送给全部</label></div><div id="recipientChecks" class="check-grid"></div><p id="sendError" class="form-error"></p><button class="primary" type="submit">确认发送 <span>↗</span></button></article>
+            <article class="panel preview-panel"><p class="eyebrow">WECHAT PREVIEW</p><div class="phone"><div class="phone-top">‹ <b>服务通知</b>•••</div><div class="bubble"><small>公众号模板消息</small><h3 id="previewTitle">消息标题</h3><p id="previewContent">消息内容将在这里实时预览。</p><hr><span>查看详情　›</span></div></div><p class="preview-note">实际样式由微信公众号模板决定</p></article>
+          </form>
+        </section>
+
+        <section id="page-schedules" class="page">
+          <div class="section-title"><div><p class="eyebrow green">AUTOMATION</p><h1>定时发送</h1><p>创建单次、每天或每周执行的微信通知。</p></div><button id="addScheduleBtn" class="primary">＋ 新建定时任务</button></div>
+          <article class="panel"><div class="table-wrap"><table><thead><tr><th>任务</th><th>频率</th><th>下次执行</th><th>最近结果</th><th>状态</th><th></th></tr></thead><tbody id="scheduleTable"></tbody></table></div></article>
+        </section>
+
+        <section id="page-templates" class="page">
+          <div class="section-title"><div><p class="eyebrow green">PRESETS</p><h1>消息模板</h1><p>保存常用通知，发送时一键套用。</p></div><button id="addTemplateBtn" class="primary">＋ 新建模板</button></div>
+          <div id="templateGrid" class="template-grid"></div>
+        </section>
+
+        <section id="page-recipients" class="page">
+          <div class="section-title"><div><p class="eyebrow green">AUDIENCE</p><h1>收件人</h1><p>管理接收微信通知的 OpenID。</p></div><button id="addRecipientBtn" class="primary">＋ 添加收件人</button></div>
+          <article class="panel"><div class="toolbar"><input id="recipientSearch" placeholder="搜索名称、分组或 OpenID"><span id="recipientCount">0 位收件人</span></div><div class="table-wrap"><table><thead><tr><th>收件人</th><th>分组</th><th>OpenID</th><th>状态</th><th></th></tr></thead><tbody id="recipientTable"></tbody></table></div></article>
+        </section>
+
+        <section id="page-history" class="page">
+          <div class="section-title"><div><p class="eyebrow green">DELIVERY LOG</p><h1>推送记录</h1><p>查询每一次消息投递结果。</p></div><button id="refreshHistory" class="secondary">刷新记录</button></div>
+          <article class="panel"><div class="toolbar history-toolbar"><input id="historySearch" placeholder="搜索消息标题或内容"><select id="historyFilter"><option value="">全部状态</option><option value="success">发送成功</option><option value="partial">部分成功</option><option value="failed">发送失败</option></select><div class="history-actions"><button id="deleteSelected" class="secondary danger-button" disabled>删除所选 <span id="selectedCount"></span></button><button id="deleteAll" class="secondary danger-button">全部删除</button></div></div><div class="table-wrap"><table><thead><tr><th class="select-cell"><input id="selectAllMessages" type="checkbox" aria-label="全选当前记录"></th><th>消息</th><th>接收数</th><th>来源</th><th>状态</th><th>发送时间</th><th></th></tr></thead><tbody id="historyTable"></tbody></table></div></article>
+        </section>
+
+        <section id="page-settings" class="page">
+          <div class="section-title"><div><p class="eyebrow green">CONFIGURATION</p><h1>系统设置</h1><p>配置微信公众号与消息跳转地址。</p></div></div>
+          <form id="settingsForm" class="settings-layout"><article class="panel form-panel"><div class="panel-head"><div><h3>微信公众号</h3><p>敏感信息使用 AES-256-GCM 加密保存。</p></div><span id="settingStatus" class="status-tag neutral">待检测</span></div><label>AppID<input name="appid" placeholder="微信公众号 AppID"></label><label>AppSecret <small id="secretHint"></small><input name="secret" type="password" placeholder="留空则保持原值"></label><label>模板消息 ID<input name="templateId" placeholder="模板 ID"></label><label>消息详情基础地址<input name="baseUrl" type="url" placeholder="例如 https://push.example.com"></label><label>推送记录保留天数<input name="retentionDays" type="number" min="7" max="3650" value="90"></label><div class="button-row"><button class="primary" type="submit">保存设置</button><button id="testWechat" class="secondary" type="button">测试微信连接</button></div><div class="data-actions"><button id="downloadBackup" class="secondary" type="button">下载数据库备份</button><button id="exportCsv" class="secondary" type="button">导出记录 CSV</button><button id="cleanupNow" class="secondary danger-button" type="button">立即清理旧记录</button></div></article><article class="panel guide-card"><p class="eyebrow">QUICK GUIDE</p><h3>开始前请准备</h3><ol><li><span>1</span><div><b>已认证公众号</b><p>在微信公众平台获取 AppID 与 AppSecret。</p></div></li><li><span>2</span><div><b>模板消息</b><p>模板中需包含 title 与 content 两个字段。</p></div></li><li><span>3</span><div><b>公开访问地址</b><p>部署后填写 HTTPS 域名，微信消息即可打开详情页。</p></div></li></ol></article></form>
+        </section>
+
+        <section id="page-api" class="page">
+          <div class="section-title"><div><p class="eyebrow green">INTEGRATIONS</p><h1>API 接入</h1><p>兼容原项目的 GET 与 POST Webhook 调用。</p></div></div>
+          <div class="panel-grid"><article class="panel span-2 api-doc"><h3>接口地址</h3><code>POST /wxsend</code><h3>请求示例</h3><pre id="curlExample">curl -X POST http://localhost:3939/wxsend \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"服务通知","content":"任务已完成"}'</pre><p>也可以使用原有 GET 参数：<code>/wxsend?token=...&title=...&content=...</code></p></article><article class="panel form-panel"><h3>新建调用 Token</h3><p class="muted">建议为每个系统单独创建，生成后只显示一次。</p><form id="newTokenForm"><label>调用方名称<input name="name" placeholder="例如 Home Assistant" required></label><button class="primary" type="submit">生成 Token</button></form></article></div><article class="panel token-panel"><div class="panel-head"><div><h3>调用方 Token</h3><p>可独立停用或删除，不影响其他系统。</p></div></div><div id="tokenList" class="token-list"></div></article>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="recipientDialog"><form id="recipientForm"><div class="dialog-head"><div><p class="eyebrow green">RECIPIENT</p><h2 id="recipientDialogTitle">添加收件人</h2></div><button id="closeRecipient" type="button" class="icon-btn">×</button></div><input type="hidden" name="id"><label>显示名称<input name="name" maxlength="80" placeholder="例如：张三" required></label><label>OpenID<input name="openid" maxlength="160" placeholder="微信公众号用户 OpenID" required></label><label>分组<input name="group_name" maxlength="80" value="默认分组"></label><label class="switch-row"><input name="enabled" type="checkbox" checked><span></span>启用接收消息</label><p id="recipientError" class="form-error"></p><div class="button-row end"><button id="cancelRecipient" type="button" class="secondary">取消</button><button id="saveRecipient" type="submit" class="primary">保存收件人</button></div></form></dialog>
+  <dialog id="templateDialog"><form id="templateForm"><div class="dialog-head"><div><p class="eyebrow green">MESSAGE PRESET</p><h2 id="templateDialogTitle">新建消息模板</h2></div><button id="closeTemplate" type="button" class="icon-btn">×</button></div><input type="hidden" name="id"><label>模板名称<input name="name" maxlength="80" required></label><label>消息标题<input name="title" maxlength="80" required></label><label>消息内容<textarea name="content" rows="7" maxlength="2000" required></textarea></label><div class="button-row end"><button id="cancelTemplate" type="button" class="secondary">取消</button><button type="submit" class="primary">保存模板</button></div></form></dialog>
+  <dialog id="scheduleDialog"><form id="scheduleForm"><div class="dialog-head"><div><p class="eyebrow green">SCHEDULE</p><h2 id="scheduleDialogTitle">新建定时任务</h2></div><button id="closeSchedule" type="button" class="icon-btn">×</button></div><input type="hidden" name="id"><label>任务名称<input name="name" maxlength="80" required></label><label>消息标题<input name="title" maxlength="80" required></label><label>消息内容<textarea name="content" rows="5" maxlength="2000" required></textarea></label><div class="form-row"><label>执行频率<select name="recurrence"><option value="once">仅一次</option><option value="daily">每天</option><option value="weekly">每周</option></select></label><label>首次发送时间<input name="nextRunAt" type="datetime-local" required></label></div><label class="switch-row"><input name="sendAll" type="checkbox" checked><span></span>发送给全部已启用收件人</label><div id="scheduleRecipients" class="check-grid"></div><label class="switch-row"><input name="enabled" type="checkbox" checked><span></span>启用任务</label><div class="button-row end"><button id="cancelSchedule" type="button" class="secondary">取消</button><button type="submit" class="primary">保存任务</button></div></form></dialog>
+  <dialog id="confirmDialog" class="confirm-dialog"><div class="confirm-icon">!</div><h2 id="confirmTitle">确认删除</h2><p id="confirmMessage">删除后无法恢复。</p><div class="button-row end"><button id="confirmCancel" type="button" class="secondary">取消</button><button id="confirmAccept" type="button" class="primary danger-primary">确认删除</button></div></dialog>
+  <div id="toast" class="toast"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

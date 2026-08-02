@@ -1,250 +1,85 @@
-# WXPush - 微信消息推送服务 (Cloudflare Workers)
+# WXPush NAS 管理版
 
-这是一个基于 [Cloudflare Workers](https://workers.cloudflare.com/) 搭建的、轻量级的微信公众号模板消息推送服务。它提供了一个简单的 API 接口，让您可以轻松地通过 HTTP 请求将消息推送到指定的微信用户。
+基于 [frankiejun/wxpush](https://github.com/frankiejun/wxpush) 改造的微信模板消息自托管服务。新增完整中文管理后台、SQLite 数据持久化、登录认证、收件人管理、推送记录和可视化配置，并保留原 `/wxsend` GET/POST API。
 
-## ✨ 特性
+## 功能
 
-✅ 完全免费  
-✅ 每天 10 万次额度，个人用不完  
-✅ 真正的微信原生弹窗 + 声音提醒  
-✅ 支持多用户  
-✅ 跳转稳定  
-✅ 可无限换皮肤 (使用项目[wxpushSkin](https://github.com/frankiejun/wxpushSkin))  
-✅ 支持docker部署
+- 响应式中文管理后台：总览、消息编辑与微信预览
+- 收件人分组、启停、搜索与完整 CRUD
+- 推送历史、记录删除、成功率与服务健康状态
+- 单次、每天、每周定时发送，支持立即执行
+- 独立移动端消息详情页
+- 失败自动重试与历史消息手动重发
+- 常用消息模板和发送页一键套用
+- 多调用方 API Token，可独立启停与撤销
+- SQLite 备份、CSV 导出和历史自动清理
+- 微信 AppSecret 使用 AES-256-GCM 加密落盘
+- 管理员会话、HttpOnly Cookie、来源校验与安全响应头
+- 兼容 Bearer Token 和原 URL Token 调用方式
+- 单容器运行，SQLite 数据目录可直接备份
 
-## 🎬 视频教学
+## 本地运行
 
-我们制作了一个详细的视频教程，手把手教您如何完成所有部署步骤。如果您偏爱视频指导，请点击下方链接观看：
-
-[<img src="https://look.pics.cloudns.ch/img/极简微信消息推送服务-封面.jpg" alt="点击观看视频教程" width="480">](https://youtu.be/sE1Kcol_XRs?si=G-UbUGlMhyysv-US)
-
-*点击上方图片或链接，即可跳转到 YouTube 观看视频教程。*
-
-
-## 🚀 部署指南
-
-我们提供多种简单的部署方式，您可以根据自己的需求选择其中一种。
-
-### 方法一：直接粘贴代码到 Cloudflare (最简单)
-
-这种方法无需任何本地开发环境，只需复制粘贴即可完成部署。
-
-1.  **登录 Cloudflare 仪表板**
-    *   打开浏览器，访问 [https://dash.cloudflare.com/](https://dash.cloudflare.com/) 并登录。
-
-2.  **创建 Worker 服务**
-    *   在左侧菜单中，选择 **Workers 和 Pages**。
-    *   点击 **创建应用程序**，然后选择 **创建 Worker**。
-    *   为您的 Worker 指定一个全局唯一的名称 (例如 `my-wxpush-service`)，然后点击 **部署**。
-
-3.  **粘贴代码**
-    *   部署完成后，点击 **编辑代码** 进入在线代码编辑器。
-    *   删除编辑器中所有的默认代码。
-    *   将项目 `src/index.js` 文件中的全部内容复制并粘贴到编辑器中。
-
-4.  **保存并部署**
-    *   点击编辑器右上角的 **保存并部署** 按钮。
-
-5.  **配置环境变量 (重要)**
-    *   返回 Worker 的主管理页面，进入 **设置** > **变量**。
-    *   在 **环境变量** 部分，点击 **添加变量**，依次添加以下配置。这些是服务运行所必需的敏感信息。
-        *   `API_TOKEN`: 用于接口调用的访问令牌，请设置一个足够复杂的随机字符串。
-        *   `WX_APPID`: 您的微信公众号 AppID。
-        *   `WX_SECRET`: 您的微信公众号 AppSecret。
-        *   `WX_USERID`: 默认接收消息用户的 OpenID，多个用户请用 `|` 符号分隔 (例如 `openid1|openid2`)。
-        *   `WX_TEMPLATE_ID`: 您要使用的微信模板消息 ID。
-        *   `WX_BASE_URL`: (可选) 点击模板消息后跳转的基础 URL。
-    *   **注意**：添加变量时，请确保勾选 **加密** 选项，以保护您的凭证安全。
-
-### 方法二：Docker 直接部署（需要有docker环境）
-
-**拉取镜像**
+要求 Node.js 22.5 或更高版本（推荐 Node.js 24）。项目没有第三方 npm 依赖。
 
 ```bash
-docker pull ghcr.io/frankiejun/wxpush:latest
+cp .env.example .env
+# 按需设置环境变量后：
+npm start
 ```
 
-**运行容器**
+开发环境未设置变量时，可使用：
+
+- 地址：`http://localhost:3939`
+- 用户名：`admin`
+- 密码：`wxpush123456`
+- API Token：`wxpush-local-token`
+
+这些仅是本地开发默认值。`NODE_ENV=production` 时，服务会强制要求安全的 `ADMIN_PASSWORD`、`APP_KEY` 与 `API_TOKEN`。
+
+## 测试
 
 ```bash
-docker run -d --name wxpush \
-  -p 3939:3939 \
-  -e API_TOKEN="your_token" \
-  -e WX_APPID="your_appid" \
-  -e WX_SECRET="your_secret" \
-  -e WX_USERID="openid1|openid2" \
-  -e WX_TEMPLATE_ID="your_template_id" \
-  -e WX_BASE_URL="https://example.com" \
-  -e PORT="3939" \
-  ghcr.io/frankiejun/wxpush:latest
+npm test
 ```
 
-**docker-compose**
+测试覆盖健康检查、静态管理台、登录鉴权、收件人 CRUD、微信配置、消息推送和原 API 兼容性；微信请求在测试中使用本地模拟，不会发送真实消息。
 
-创建 `docker-compose.yml`，直接使用镜像运行：
+## API
 
-```yaml
-services:
-  wxpush:
-    image: ghcr.io/frankiejun/wxpush:latest
-    ports:
-      - "3939:3939"
-    environment:
-      API_TOKEN: "your_token"
-      WX_APPID: "your_appid"
-      WX_SECRET: "your_secret"
-      WX_USERID: "openid1|openid2"
-      WX_TEMPLATE_ID: "your_template_id"
-      WX_BASE_URL: "https://example.com"
-      PORT: "3939"
-    restart: unless-stopped
-```
-
-### 方法三：通过关联 GitHub 仓库自动部署
-
-如果您希望通过 Git 进行版本控制和持续集成，推荐使用此方法。
-
-1.  **Fork 或克隆项目**
-    *   首先，将本项目 Fork 到您自己的 GitHub 账户，或者克隆后推送到您自己的新仓库。
-
-2.  **连接到 GitHub**
-    *   登录 Cloudflare 仪表板，进入 **Workers 和 Pages**。
-    *   点击 **创建应用程序**，切换到 **Pages** 选项卡，然后点击 **连接到 Git**。
-
-3.  **选择仓库**
-    *   选择您刚刚创建的 GitHub 仓库。
-
-4.  **配置构建和部署**
-    *   **项目名称**：为您项目指定一个名称。
-    *   **生产分支**：选择您希望部署的分支 (通常是 `main` 或 `master`)。
-    *   **框架预设**：选择 `None`。
-    *   **构建设置**：将所有构建相关的字段 (如构建命令、输出目录) 留空。
-    *   **根目录**：保持默认的 `/` 即可。
-
-5.  **添加环境变量**
-    *   在配置页面的 **环境变量** 部分，添加与 **方法一** 中相同的 `API_TOKEN`, `WX_APPID`, `WX_SECRET` 等变量。
-    *   同样，请务必为每个变量勾选 **加密** 选项。
-
-6.  **保存并部署**
-    *   点击 **保存并部署**。Cloudflare 会自动从您的仓库拉取代码并完成部署。
-    *   此后，每当您向指定的生产分支推送新的代码提交时，Cloudflare 都会自动为您重新部署。
-
-部署成功后，您的服务访问地址会显示在 Worker 或 Pages 的主页面上。
-
-## ⚙️ API 使用方法
-
-服务部署成功后，您可以通过构造 URL 发起 `GET` 请求来推送消息。
-
-### 请求地址
-
-```
-https://<您的Worker地址>/wxsend
-```
-
-### 请求参数
-
-| 参数名      | 类型   | 是否必填 | 描述                                           |
-|-------------|--------|----------|------------------------------------------------|
-| `token`     | String | 是       | 您在 `API_TOKEN` 中设置的访问令牌。            |
-| `title`     | String | 是       | 消息的标题。                                   |
-| `content`   | String | 是       | 消息的具体内容。                               |
-| `appid`     | String | 否       | 临时覆盖默认的微信 AppID。                     |
-| `secret`    | String | 否       | 临时覆盖默认的微信 AppSecret。                 |
-| `userid`    | String | 否       | 临时覆盖默认的接收用户 OpenID。                  |
-| `template_id`| String | 否       | 临时覆盖默认的模板消息 ID。                    |
-| `base_url`  | String | 否       | 临时覆盖默认的跳转 URL。                       |
-
-### 使用示例
-
-**基础推送**
-
-向默认配置的所有用户推送一条消息：
-
-```
-https://<您的Worker地址>/wxsend?title=服务器通知&content=服务已于北京时间%2022:00%20重启&token=your_secret_token
-```
-
-**临时覆盖用户**
-
-向一个临时指定的用户推送消息：
-
-```
-https://<您的Worker地址>/wxsend?title=私人提醒&content=记得带钥匙&token=your_secret_token&userid=temporary_openid_here
-```
-
-### Webhook / POST 请求
-
-除了 `GET` 请求，服务也支持 `POST` 方法，更适合用于自动化的 Webhook 集成。
-
-**请求地址**
-
-```
-https://<您的Worker地址>/wxsend
-```
-
-**请求方法**
-
-```
-POST
-```
-
-**请求头 (Headers)**
-
-```json
-{
-  "Authorization": "你的token",
-  "Content-Type": "application/json"
-}
-```
-
-**请求体 (Body)**
-
-请求体需要是一个 JSON 对象，包含与 `GET` 请求相同的参数。
-
-```json
-{
-  "title": "Webhook 通知",
-  "content": "这是一个通过 POST 请求发送的 Webhook 消息。"
-}
-```
-
-**使用示例 (cURL)**
+推荐使用 POST：
 
 ```bash
-curl -X POST \
-  "https://<您的Worker地址>/wxsend" \
-  -H "Authorization: 你的token" \
+curl -X POST "http://localhost:3939/wxsend" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "来自 cURL 的消息",
-    "content": "自动化任务已完成。"
-  }'
+  -d '{"title":"服务器通知","content":"备份任务已完成"}'
 ```
 
-### 成功响应
+兼容原 GET 调用：
 
-如果消息成功发送给至少一个用户，服务会返回 `HTTP 200` 状态码和 JSON：
-
-```json
-{
-  "msg": "Successfully sent messages to 1 user(s). First response: ok"
-}
+```text
+/wxsend?token=YOUR_API_TOKEN&title=服务器通知&content=备份完成
 ```
 
-### 失败响应
+可传 `userid=OPENID1|OPENID2` 临时覆盖后台启用的收件人。
 
-如果发生错误（如 token 错误、缺少参数、微信接口调用失败等），服务会返回相应的 `HTTP 4xx` 或 `5xx` 状态码和 JSON：
+## 飞牛 NAS 部署准备
 
-```json
-{
-  "msg": "Invalid token"
-}
-```
+1. 将整个项目目录上传到 NAS。
+2. 复制 `.env.example` 为 `.env`，至少修改 `ADMIN_PASSWORD`、`APP_KEY` 和 `API_TOKEN`。
+3. 在项目目录执行 `docker compose up -d --build`，或在飞牛 Docker Compose 界面导入 `docker-compose.yml`。
+4. 打开 `http://NAS_IP:3939`，登录后在“系统设置”填写微信配置。
+5. 将 `data` 目录纳入 NAS 备份计划。
 
-## 🤝 贡献
+正式部署前，建议为管理后台配置 HTTPS 反向代理，不要直接把 3939 端口暴露到公网。
 
-欢迎任何形式的贡献！如果您有好的想法或发现了 Bug，请随时提交 Pull Request 或创建 Issue。
+## 数据与升级
 
-## 📜 许可证
+所有业务数据保存在 `data/wxpush.db`。升级前备份 `data` 目录，替换代码或镜像后重新启动即可。`APP_KEY` 用于解密 AppSecret，必须长期保存且不能随意更换。
 
-本项目采用 [MIT License](LICENSE) 开源许可证。
+数据库采用兼容式自动迁移。升级到 2.1 后会保留已有配置、收件人和推送记录，并新增模板、定时任务与多 Token 数据表。
+
+## 开源许可
+
+沿用原项目 MIT License。
