@@ -24,7 +24,7 @@ async function sendOne(accessToken, config, message, openid, fetchImpl, attempt)
     const response = await fetchImpl(`https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${encodeURIComponent(accessToken)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json;charset=utf-8' },
-      body: JSON.stringify({ touser: openid, template_id: config.templateId, url: message.detailUrl || '', data: message.wechatData || { title: { value: message.title }, content: { value: message.content } } }),
+      body: JSON.stringify({ touser: openid, template_id: config.templateId, url: message.detailUrl || '', data: { title: { value: message.title }, content: { value: message.content } } }),
       signal: AbortSignal.timeout(15000)
     });
     const data = await response.json();

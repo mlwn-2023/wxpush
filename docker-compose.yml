@@ -1,7 +1,7 @@
 services:
   wxpush:
     build: .
-    image: wxpush-nas:2.3.0
+    image: wxpush-nas:2.2.1
     container_name: wxpush
     ports:
       - "3939:3939"
