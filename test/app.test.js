@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,7 +17,7 @@ async function setup() {
   const app = createApp({
     dataDir: dir,
     fetchImpl,
-    env: { NODE_ENV: 'test', ADMIN_USERNAME: 'admin', ADMIN_PASSWORD: 'strong-password', APP_KEY: 'test-app-key-with-enough-entropy', API_TOKEN: 'test-api-token-123456789' }
+    env: { NODE_ENV: 'test', ADMIN_USERNAME: 'admin', ADMIN_PASSWORD: 'strong-password', APP_KEY: 'test-app-key-with-enough-entropy', API_TOKEN: 'test-api-token-123456789', REQUIRE_API_SIGN: 'true' }
   });
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${app.server.address().port}`;
@@ -28,6 +29,12 @@ async function login(ctx) {
   const response = await fetch(`${ctx.base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'strong-password' }) });
   assert.equal(response.status, 200);
   return response.headers.get('set-cookie').split(';')[0];
+}
+
+function signedPayload(secret, body = {}) {
+  const timestamp = String(Date.now());
+  const sign = createHmac('sha256', secret).update(`${timestamp}\n${secret}`, 'utf8').digest('base64');
+  return { ...body, timestamp, sign };
 }
 
 test('health check and static console are available', async t => {
@@ -75,9 +82,15 @@ test('legacy wxsend endpoint remains compatible', async t => {
   await fetch(`${ctx.base}/api/recipients`, { method: 'POST', headers, body: JSON.stringify({ name: '其他用户', openid: 'openid-other-user', group_name: '家庭通知' }) });
   await fetch(`${ctx.base}/api/settings`, { method: 'PUT', headers, body: JSON.stringify({ appid: 'appid', secret: 'secret', templateId: 'template' }) });
   const denied = await fetch(`${ctx.base}/wxsend?token=bad&title=a&content=b`); assert.equal(denied.status, 403);
-  const response = await fetch(`${ctx.base}/wxsend`, { method: 'POST', headers: { authorization: 'Bearer test-api-token-123456789', 'content-type': 'application/json' }, body: JSON.stringify({ group: '服务器告警', title: 'Webhook', content: '部署完成' }) });
+  const unsigned = await fetch(`${ctx.base}/wxsend`, { method: 'POST', headers: { authorization: 'Bearer test-api-token-123456789', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Unsigned', content: '拒绝未签名请求' }) });
+  assert.equal(unsigned.status, 403); assert.match((await unsigned.json()).msg, /timestamp/);
+  const payload = signedPayload('test-api-token-123456789', { group: '服务器告警', from: 'SmsForwarder', content: '部署完成' });
+  const form = new URLSearchParams(payload);
+  const response = await fetch(`${ctx.base}/wxsend`, { method: 'POST', headers: { authorization: 'Bearer test-api-token-123456789', 'content-type': 'application/x-www-form-urlencoded' }, body: form });
   assert.equal(response.status, 200); assert.match((await response.json()).msg, /Successfully sent/);
-  assert.equal(JSON.parse(ctx.calls.at(-1).body).touser, 'openid-api-user');
+  const wechatPayload = JSON.parse(ctx.calls.at(-1).body); assert.equal(wechatPayload.touser, 'openid-api-user'); assert.equal(wechatPayload.data.title.value, 'SmsForwarder');
+  const replay = await fetch(`${ctx.base}/wxsend`, { method: 'POST', headers: { authorization: 'Bearer test-api-token-123456789', 'content-type': 'application/x-www-form-urlencoded' }, body: form });
+  assert.equal(replay.status, 403); assert.match((await replay.json()).msg, /Replay/);
 });
 
 test('templates, scoped tokens, schedules, detail page and exports work', async t => {
@@ -92,7 +105,7 @@ test('templates, scoped tokens, schedules, detail page and exports work', async 
 
   const tokenCreate = await fetch(`${ctx.base}/api/tokens`, { method: 'POST', headers, body: JSON.stringify({ name: 'Home Assistant' }) });
   assert.equal(tokenCreate.status, 201); const generatedToken = (await tokenCreate.json()).token; assert.match(generatedToken, /^wxp_/);
-  const tokenSend = await fetch(`${ctx.base}/wxsend`, { method: 'POST', headers: { authorization: `Bearer ${generatedToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ title: '自动化通知', content: 'Token 调用成功' }) }); assert.equal(tokenSend.status, 200);
+  const tokenSend = await fetch(`${ctx.base}/wxsend`, { method: 'POST', headers: { authorization: `Bearer ${generatedToken}`, 'content-type': 'application/json' }, body: JSON.stringify(signedPayload(generatedToken,{ title: '自动化通知', content: 'Token 调用成功' })) }); assert.equal(tokenSend.status, 200);
 
   const scheduleCreate = await fetch(`${ctx.base}/api/schedules`, { method: 'POST', headers, body: JSON.stringify({ name: '立即到期任务', title: '定时通知', content: '计划执行成功', sendAll: true, recurrence: 'once', nextRunAt: new Date(Date.now() - 1000).toISOString() }) });
   assert.equal(scheduleCreate.status, 201); await ctx.runDueSchedules();

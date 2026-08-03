@@ -1,6 +1,6 @@
 # WXPush 后端 API 文档
 
-本文档对应 WXPush NAS 2.1。示例地址为 `http://192.168.6.123:3939`，请替换成实际服务地址。
+本文档对应 WXPush NAS 2.2。示例地址为 `http://192.168.6.123:3939`，请替换成实际服务地址。
 
 ## 认证方式
 
@@ -13,6 +13,17 @@ Authorization: Bearer YOUR_API_TOKEN
 ```
 
 Token 可以是 `.env` 中的 `API_TOKEN`，也可以是在后台“API Token”菜单创建的独立 Token。为兼容旧调用，也支持 URL 参数 `token=YOUR_API_TOKEN`，但不推荐，因为 Token 可能进入浏览器历史和访问日志。
+
+生产环境默认同时要求 SmsForwarder 兼容签名，并直接以本次请求使用的 API Token 作为签名 `secret`。签名算法为：
+
+1. 生成当前 Unix 毫秒时间戳 `timestamp`。
+2. 待签名字符串为 `timestamp + "\n" + secret`。
+3. 使用 `secret` 作为密钥计算 HMAC-SHA256。
+4. 对结果进行 Base64，再对签名值进行 URL 编码。
+
+服务允许请求时间与服务器时间最多相差一小时，并把已接受签名的哈希写入 SQLite；相同签名在有效期内再次提交会返回 `403 Replay request rejected`。如需临时兼容旧调用，可设置 `REQUIRE_API_SIGN=false`，但不建议长期关闭。
+
+SmsForwarder 的兼容算法只签名时间戳，不覆盖消息正文；跨公网调用仍必须使用 HTTPS，防止 Token、签名和消息内容被窃听或篡改。
 
 ### 管理接口会话
 
@@ -35,8 +46,10 @@ Content-Type: application/json
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `title` | string | 是 | 消息标题 |
+| `title` | string | 条件必填 | 消息标题；SmsForwarder 传入 `from` 时可省略 |
 | `content` | string | 是 | 消息正文 |
+| `timestamp` | string / number | 是 | 当前 Unix 毫秒时间戳 |
+| `sign` | string | 是 | SmsForwarder 规则生成的签名；JSON 可传 Base64 原值或 URL 编码值 |
 | `group` | string | 否 | 收件人分类；多个分类使用 `|` 分隔 |
 | `groups` | string[] | 否 | 多个收件人分类，仅 POST JSON 支持数组形式 |
 | `group_name` | string | 否 | `group` 的兼容别名 |
@@ -52,17 +65,22 @@ Content-Type: application/json
 
 按单个分类发送：
 
-```bash
-curl -X POST "http://192.168.6.123:3939/wxsend" \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"group":"服务器告警","title":"磁盘告警","content":"剩余空间不足 10%"}'
+```json
+{
+  "timestamp": "1785686400000",
+  "sign": "BASE64_OR_URL_ENCODED_SIGN",
+  "group": "服务器告警",
+  "title": "磁盘告警",
+  "content": "剩余空间不足 10%"
+}
 ```
 
 按多个分类发送：
 
 ```json
 {
+  "timestamp": "1785686400000",
+  "sign": "BASE64_OR_URL_ENCODED_SIGN",
   "groups": ["服务器告警", "管理员"],
   "title": "服务通知",
   "content": "服务已经恢复"
@@ -73,6 +91,8 @@ curl -X POST "http://192.168.6.123:3939/wxsend" \
 
 ```json
 {
+  "timestamp": "1785686400000",
+  "sign": "BASE64_OR_URL_ENCODED_SIGN",
   "userid": "OPENID_1|OPENID_2",
   "title": "个人通知",
   "content": "任务已经完成"
@@ -92,10 +112,20 @@ curl -X POST "http://192.168.6.123:3939/wxsend" \
 兼容旧版调用。参数通过查询字符串传递，多个分类或 OpenID 使用 `|` 分隔：
 
 ```text
-/wxsend?token=YOUR_API_TOKEN&group=服务器告警|管理员&title=系统通知&content=更新完成
+/wxsend?token=YOUR_API_TOKEN&timestamp=MILLISECOND_TIMESTAMP&sign=URL_ENCODED_SIGN&group=服务器告警|管理员&title=系统通知&content=更新完成
 ```
 
 生产环境建议使用 POST，避免 Token 和消息正文出现在 URL 中。
+
+### SmsForwarder 对接
+
+在 SmsForwarder 的 Webhook 发送通道中：
+
+- WebServer：`http://NAS_IP:3939/wxsend?token=YOUR_API_TOKEN&group=服务器告警`
+- secret：填写同一个 `YOUR_API_TOKEN`
+- 请求方式：GET 或 POST 均可，推荐 POST
+
+SmsForwarder 默认提交的 `from` 会在没有 `title` 时作为消息标题，`content` 作为消息正文；其 `timestamp` 和 `sign` 可被 WXPush 直接验证，无需转换。
 
 ## 公共接口
 
@@ -333,7 +363,19 @@ AppSecret 使用 AES-256-GCM 加密保存。`baseUrl` 应填写详情页基础�
 
 ```powershell
 $headers = @{ Authorization = "Bearer YOUR_API_TOKEN" }
+$token = "YOUR_API_TOKEN"
+$timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString()
+$hmac = [System.Security.Cryptography.HMACSHA256]::new(
+    [System.Text.Encoding]::UTF8.GetBytes($token)
+)
+$signBytes = $hmac.ComputeHash(
+    [System.Text.Encoding]::UTF8.GetBytes("$timestamp`n$token")
+)
+$sign = [Convert]::ToBase64String($signBytes)
+$hmac.Dispose()
 $body = @{
+    timestamp = $timestamp
+    sign = $sign
     group = "服务器告警"
     title = "磁盘告警"
     content = "剩余空间不足 10%"

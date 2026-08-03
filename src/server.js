@@ -3,13 +3,14 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createHash, randomBytes, scryptSync, timingSafeEqual, createCipheriv, createDecipheriv } from 'node:crypto';
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual, createCipheriv, createDecipheriv } from 'node:crypto';
 import { createStore } from './db.js';
 import { sendWechatMessage, verifyWechat } from './wechat.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const PUBLIC_DIR = resolve(ROOT, 'public');
 const JSON_LIMIT = 1024 * 1024;
+const SIGN_MAX_SKEW_MS = 60 * 60 * 1000;
 
 export function createApp(options = {}) {
   const env = { ...process.env, ...options.env };
@@ -27,6 +28,7 @@ export function createApp(options = {}) {
   const passwordSalt = createHash('sha256').update(appKey).digest('hex').slice(0, 32);
   const adminPasswordHash = scryptSync(adminPassword, passwordSalt, 32);
   const apiTokenHash = hashToken(env.API_TOKEN || store.getSetting('api_token') || 'wxpush-local-token');
+  const requireApiSign = String(env.REQUIRE_API_SIGN ?? ((env.NODE_ENV || 'development') === 'production')).toLowerCase() === 'true';
   const loginAttempts = new Map();
 
   seedSettings(store, env);
@@ -198,6 +200,10 @@ export function createApp(options = {}) {
     if (!valid) return json(res, 403, { msg: 'Invalid token' });
     const body = req.method === 'POST' ? await readJson(req, true) : {};
     const params = { ...Object.fromEntries(url.searchParams), ...body };
+    if (requireApiSign || params.timestamp || params.sign) {
+      const signature = verifySmsForwarderSignature(params.timestamp, params.sign, supplied, store);
+      if (!signature.ok) return json(res, 403, { msg: signature.error });
+    }
     const directRecipients = parseRecipientSelector(params.userid);
     const groups = parseRecipientSelector(params.group ?? params.groups ?? params.group_name);
     const recipients = directRecipients.length
@@ -205,7 +211,7 @@ export function createApp(options = {}) {
       : groups.length
         ? store.enabledOpenidsByGroups(groups)
         : store.enabledOpenids();
-    return sendAndRecord(res, { title: params.title, content: params.content, recipients, source: 'api', legacy: true });
+    return sendAndRecord(res, { title: params.title || params.from || 'SmsForwarder', content: params.content, recipients, source: 'api', legacy: true });
   }
 
   async function sendAndRecord(res, input) {
@@ -330,6 +336,22 @@ function hashToken(value) { return createHash('sha256').update(String(value || '
 function safeHashEqual(a, b) { if (!a || !b || a.length !== b.length) return false; return timingSafeEqual(Buffer.from(a), Buffer.from(b)); }
 function maskOpenid(value) { return value.length < 9 ? '***' : `${value.slice(0, 4)}…${value.slice(-4)}`; }
 function parseRecipientSelector(value) { return (Array.isArray(value) ? value : String(value || '').split('|')).map(item => String(item).trim()).filter(Boolean); }
+function verifySmsForwarderSignature(timestampValue, signValue, secret, store) {
+  const timestamp = String(timestampValue || '').trim();
+  const timestampMs = Number(timestamp);
+  if (!timestamp || !Number.isSafeInteger(timestampMs)) return { ok: false, error: 'Invalid timestamp' };
+  const now = Date.now();
+  if (Math.abs(now - timestampMs) > SIGN_MAX_SKEW_MS) return { ok: false, error: 'Timestamp expired' };
+  const supplied = decodeApiSignature(signValue);
+  if (!supplied) return { ok: false, error: 'Missing sign' };
+  const expected = createHmac('sha256', secret).update(`${timestamp}\n${secret}`, 'utf8').digest('base64');
+  if (!safeTextEqual(expected, supplied)) return { ok: false, error: 'Invalid sign' };
+  const signatureHash = createHash('sha256').update(`${timestamp}\n${supplied}`).digest('hex');
+  if (!store.rememberApiSignature(signatureHash, timestampMs + SIGN_MAX_SKEW_MS, now)) return { ok: false, error: 'Replay request rejected' };
+  return { ok: true };
+}
+function decodeApiSignature(value) { const raw=String(value||'').trim();try{return /%[0-9a-f]{2}/i.test(raw)?decodeURIComponent(raw):raw;}catch{return raw;} }
+function safeTextEqual(a,b){const left=Buffer.from(String(a));const right=Buffer.from(String(b));return left.length===right.length&&timingSafeEqual(left,right);}
 function isWrite(method) { return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method); }
 function validOrigin(req) { const origin = req.headers.origin; if (!origin) return true; try { return new URL(origin).host === req.headers.host; } catch { return false; } }
 function httpError(statusCode, message) { return Object.assign(new Error(message), { statusCode }); }

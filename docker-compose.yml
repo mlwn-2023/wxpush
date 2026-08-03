@@ -1,7 +1,7 @@
 services:
   wxpush:
     build: .
-    image: wxpush-nas:2.1.0
+    image: wxpush-nas:2.2.0
     container_name: wxpush
     ports:
       - "3939:3939"
@@ -13,6 +13,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?请在 .env 中设置 ADMIN_PASSWORD}
       APP_KEY: ${APP_KEY:?请在 .env 中设置 APP_KEY}
       API_TOKEN: ${API_TOKEN:?请在 .env 中设置 API_TOKEN}
+      REQUIRE_API_SIGN: ${REQUIRE_API_SIGN:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
       - ./data:/app/data

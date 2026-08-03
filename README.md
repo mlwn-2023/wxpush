@@ -55,13 +55,15 @@ npm test
 curl -X POST "http://localhost:3939/wxsend" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"title":"服务器通知","content":"备份任务已完成"}'
+  -d '{"timestamp":"MILLISECOND_TIMESTAMP","sign":"SMSFORWARDER_SIGN","title":"服务器通知","content":"备份任务已完成"}'
 ```
+
+生产环境默认要求 SmsForwarder 兼容签名：以 API Token 作为 `secret`，计算 `HMAC-SHA256(timestamp + "\n" + secret)`，再进行 Base64 和 URL 编码。服务同时校验一小时时间窗口，并在 SQLite 中拒绝已使用签名。完整计算示例见 [后端 API 文档](docs/API.md)。
 
 兼容原 GET 调用：
 
 ```text
-/wxsend?token=YOUR_API_TOKEN&title=服务器通知&content=备份完成
+/wxsend?token=YOUR_API_TOKEN&timestamp=MILLISECOND_TIMESTAMP&sign=URL_ENCODED_SIGN&title=服务器通知&content=备份完成
 ```
 
 推荐传 `group=服务器告警` 按后台收件人分类发送；多个分类可用 `group=服务器告警|家庭通知`，POST JSON 也可传 `groups: ["服务器告警", "家庭通知"]`。仍可传 `userid=OPENID1|OPENID2` 临时覆盖分类和后台启用的收件人。
