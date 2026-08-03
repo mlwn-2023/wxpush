@@ -75,7 +75,8 @@ export function createApp(options = {}) {
       const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
       store.cleanupSessions(Date.now());
       store.addSession(hashToken(rawToken), expiresAt);
-      res.setHeader('set-cookie', `wxpush_session=${rawToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+      const secureCookie = String(env.COOKIE_SECURE || '').toLowerCase() === 'true';
+      res.setHeader('set-cookie', `wxpush_session=${rawToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${secureCookie ? '; Secure' : ''}`);
       return json(res, 200, { ok: true, username: adminUsername });
     }
 
@@ -197,8 +198,14 @@ export function createApp(options = {}) {
     if (!valid) return json(res, 403, { msg: 'Invalid token' });
     const body = req.method === 'POST' ? await readJson(req, true) : {};
     const params = { ...Object.fromEntries(url.searchParams), ...body };
-    const recipients = String(params.userid || '').split('|').map(v => v.trim()).filter(Boolean);
-    return sendAndRecord(res, { title: params.title, content: params.content, recipients: recipients.length ? recipients : store.enabledOpenids(), source: 'api', legacy: true });
+    const directRecipients = parseRecipientSelector(params.userid);
+    const groups = parseRecipientSelector(params.group ?? params.groups ?? params.group_name);
+    const recipients = directRecipients.length
+      ? directRecipients
+      : groups.length
+        ? store.enabledOpenidsByGroups(groups)
+        : store.enabledOpenids();
+    return sendAndRecord(res, { title: params.title, content: params.content, recipients, source: 'api', legacy: true });
   }
 
   async function sendAndRecord(res, input) {
@@ -322,6 +329,7 @@ function parseCookies(value) { return Object.fromEntries(value.split(';').map(v 
 function hashToken(value) { return createHash('sha256').update(String(value || '')).digest('hex'); }
 function safeHashEqual(a, b) { if (!a || !b || a.length !== b.length) return false; return timingSafeEqual(Buffer.from(a), Buffer.from(b)); }
 function maskOpenid(value) { return value.length < 9 ? '***' : `${value.slice(0, 4)}…${value.slice(-4)}`; }
+function parseRecipientSelector(value) { return (Array.isArray(value) ? value : String(value || '').split('|')).map(item => String(item).trim()).filter(Boolean); }
 function isWrite(method) { return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method); }
 function validOrigin(req) { const origin = req.headers.origin; if (!origin) return true; try { return new URL(origin).host === req.headers.host; } catch { return false; } }
 function httpError(statusCode, message) { return Object.assign(new Error(message), { statusCode }); }

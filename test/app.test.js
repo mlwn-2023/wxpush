@@ -33,7 +33,7 @@ async function login(ctx) {
 test('health check and static console are available', async t => {
   const ctx = await setup(); t.after(ctx.close);
   const health = await fetch(`${ctx.base}/health`); assert.equal(health.status, 200); assert.equal((await health.json()).ok, true);
-  const page = await fetch(ctx.base); assert.equal(page.status, 200); assert.match(await page.text(), /WXPush 管理台/); assert.match(page.headers.get('content-security-policy'), /default-src/);
+  const page = await fetch(ctx.base); assert.equal(page.status, 200); const html = await page.text(); assert.match(html, /WXPush 管理台/); assert.match(html, /id="scheduleTemplate"/); assert.match(page.headers.get('content-security-policy'), /default-src/);
 });
 
 test('login rejects bad credentials and protects API', async t => {
@@ -71,11 +71,13 @@ test('recipient CRUD, settings and console sending work end-to-end', async t => 
 
 test('legacy wxsend endpoint remains compatible', async t => {
   const ctx = await setup(); t.after(ctx.close); const cookie = await login(ctx); const headers = { cookie, 'content-type': 'application/json' };
-  await fetch(`${ctx.base}/api/recipients`, { method: 'POST', headers, body: JSON.stringify({ name: 'API 用户', openid: 'openid-api-user' }) });
+  await fetch(`${ctx.base}/api/recipients`, { method: 'POST', headers, body: JSON.stringify({ name: 'API 用户', openid: 'openid-api-user', group_name: '服务器告警' }) });
+  await fetch(`${ctx.base}/api/recipients`, { method: 'POST', headers, body: JSON.stringify({ name: '其他用户', openid: 'openid-other-user', group_name: '家庭通知' }) });
   await fetch(`${ctx.base}/api/settings`, { method: 'PUT', headers, body: JSON.stringify({ appid: 'appid', secret: 'secret', templateId: 'template' }) });
   const denied = await fetch(`${ctx.base}/wxsend?token=bad&title=a&content=b`); assert.equal(denied.status, 403);
-  const response = await fetch(`${ctx.base}/wxsend`, { method: 'POST', headers: { authorization: 'Bearer test-api-token-123456789', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Webhook', content: '部署完成' }) });
+  const response = await fetch(`${ctx.base}/wxsend`, { method: 'POST', headers: { authorization: 'Bearer test-api-token-123456789', 'content-type': 'application/json' }, body: JSON.stringify({ group: '服务器告警', title: 'Webhook', content: '部署完成' }) });
   assert.equal(response.status, 200); assert.match((await response.json()).msg, /Successfully sent/);
+  assert.equal(JSON.parse(ctx.calls.at(-1).body).touser, 'openid-api-user');
 });
 
 test('templates, scoped tokens, schedules, detail page and exports work', async t => {

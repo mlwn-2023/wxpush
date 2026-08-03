@@ -47,6 +47,8 @@ npm test
 
 ## API
 
+完整的认证方式、请求参数、响应说明和全部管理接口见 [后端 API 文档](docs/API.md)。
+
 推荐使用 POST：
 
 ```bash
@@ -62,7 +64,7 @@ curl -X POST "http://localhost:3939/wxsend" \
 /wxsend?token=YOUR_API_TOKEN&title=服务器通知&content=备份完成
 ```
 
-可传 `userid=OPENID1|OPENID2` 临时覆盖后台启用的收件人。
+推荐传 `group=服务器告警` 按后台收件人分类发送；多个分类可用 `group=服务器告警|家庭通知`，POST JSON 也可传 `groups: ["服务器告警", "家庭通知"]`。仍可传 `userid=OPENID1|OPENID2` 临时覆盖分类和后台启用的收件人。
 
 ## 飞牛 NAS 部署准备
 
