@@ -1,6 +1,6 @@
 # WXPush 后端 API 文档
 
-本文档对应 WXPush NAS 2.2。示例地址为 `http://192.168.6.123:3939`，请替换成实际服务地址。
+本文档对应 WXPush NAS 2.3。示例地址为 `http://192.168.6.123:3939`，请替换成实际服务地址。
 
 ## 认证方式
 
@@ -54,6 +54,31 @@ Content-Type: application/json
 | `groups` | string[] | 否 | 多个收件人分类，仅 POST JSON 支持数组形式 |
 | `group_name` | string | 否 | `group` 的兼容别名 |
 | `userid` | string | 否 | 一个或多个微信 OpenID，多个使用 `|` 分隔 |
+| `templateId` / `template_id` | string | 否 | 本次消息使用的微信模板 ID；不传时使用系统设置中的模板 ID |
+| `wechatData` / `data` | object | 否 | 微信模板字段对象，每个字段包含 `value`，可选 `color`（`#RRGGBB`） |
+
+不传 `wechatData` 时，服务仍按旧版方式生成 `title` 和 `content` 两个模板字段。传入富模板数据时，`title` 和 `content` 仍用于后台记录、检索和详情页，微信端展示内容则由所选模板及 `wechatData` 决定。
+
+使用模板 `b_eJUdf0wmpp0DHy8MJ5TKwh8sy5SYXG16oEZfrPV7E` 发送富通知：
+
+```json
+{
+  "timestamp": "1785686400000",
+  "sign": "BASE64_OR_URL_ENCODED_SIGN",
+  "group": "家庭通知",
+  "title": "优惠券领取成功通知",
+  "content": "100元现金抵用券，2026年8月20日到期",
+  "templateId": "b_eJUdf0wmpp0DHy8MJ5TKwh8sy5SYXG16oEZfrPV7E",
+  "wechatData": {
+    "first": { "value": "恭喜您，获得了100元现金抵用券", "color": "#173177" },
+    "keyword1": { "value": "100元现金抵用券", "color": "#ff8c00" },
+    "keyword2": { "value": "家庭通知", "color": "#ff8c00" },
+    "keyword3": { "value": "2026年8月20日", "color": "#ff8c00" },
+    "keyword4": { "value": "到店出示即可使用", "color": "#333333" },
+    "remark": { "value": "点击详情查看使用说明", "color": "#ff0000" }
+  }
+}
+```
 
 收件人选择优先级：
 
@@ -210,9 +235,20 @@ SmsForwarder 默认提交的 `from` 会在没有 `title` 时作为消息标题�
 {
   "title": "系统通知",
   "content": "备份已经完成",
-  "recipientIds": [1, 2]
+  "recipientIds": [1, 2],
+  "wechatTemplateId": "b_eJUdf0wmpp0DHy8MJ5TKwh8sy5SYXG16oEZfrPV7E",
+  "wechatData": {
+    "first": { "value": "备份任务已完成", "color": "#173177" },
+    "keyword1": { "value": "每日备份" },
+    "keyword2": { "value": "飞牛 NAS" },
+    "keyword3": { "value": "2026年8月3日" },
+    "keyword4": { "value": "无需人工处理" },
+    "remark": { "value": "点击查看详情", "color": "#ff0000" }
+  }
 }
 ```
+
+`wechatTemplateId` 和 `wechatData` 均为可选项；消息历史会保存当次模板快照，手动重试时仍使用原模板和字段。
 
 发送给全部已启用联系人时传入：
 
@@ -255,9 +291,20 @@ SmsForwarder 默认提交的 `from` 会在没有 `title` 时作为消息标题�
 {
   "name": "NAS 告警",
   "title": "磁盘空间告警",
-  "content": "剩余空间不足"
+  "content": "剩余空间不足",
+  "wechatTemplateId": "b_eJUdf0wmpp0DHy8MJ5TKwh8sy5SYXG16oEZfrPV7E",
+  "wechatData": {
+    "first": { "value": "NAS 状态提醒" },
+    "keyword1": { "value": "磁盘空间" },
+    "keyword2": { "value": "飞牛 NAS" },
+    "keyword3": { "value": "请尽快处理" },
+    "keyword4": { "value": "清理无用文件" },
+    "remark": { "value": "点击查看详情", "color": "#ff0000" }
+  }
 }
 ```
+
+保存富模板后，从发送页或定时任务选择该常用模板，会同时带入微信模板 ID、字段内容和颜色。
 
 ## API Token 管理
 
@@ -303,6 +350,15 @@ SmsForwarder 默认提交的 `from` 会在没有 `title` 时作为消息标题�
   "content": "设备运行正常",
   "recipientIds": [1, 2],
   "sendAll": false,
+  "wechatTemplateId": "b_eJUdf0wmpp0DHy8MJ5TKwh8sy5SYXG16oEZfrPV7E",
+  "wechatData": {
+    "first": { "value": "NAS 每日报告" },
+    "keyword1": { "value": "运行正常", "color": "#173177" },
+    "keyword2": { "value": "飞牛 NAS" },
+    "keyword3": { "value": "每日 09:00" },
+    "keyword4": { "value": "无需处理" },
+    "remark": { "value": "点击查看详情" }
+  },
   "recurrence": "daily",
   "nextRunAt": "2026-08-04T01:00:00.000Z",
   "enabled": true

@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/server.js';
+const RICH_TEMPLATE_ID = 'b_eJUdf0wmpp0DHy8MJ5TKwh8sy5SYXG16oEZfrPV7E';
 
 async function setup() {
   const dir = mkdtempSync(join(tmpdir(), 'wxpush-test-'));
@@ -40,7 +41,7 @@ function signedPayload(secret, body = {}) {
 test('health check and static console are available', async t => {
   const ctx = await setup(); t.after(ctx.close);
   const health = await fetch(`${ctx.base}/health`); assert.equal(health.status, 200); assert.equal((await health.json()).ok, true);
-  const page = await fetch(ctx.base); assert.equal(page.status, 200); const html = await page.text(); assert.match(html, /WXPush 管理台/); assert.match(html, /id="scheduleTemplate"/); assert.match(html, /id="recipientGroupActions"/); assert.match(html, /SmsForwarder 配置/); assert.match(html, /timestamp.*sign/s); assert.match(page.headers.get('content-security-policy'), /default-src/);
+  const page = await fetch(ctx.base); assert.equal(page.status, 200); const html = await page.text(); assert.match(html, /WXPush 管理台/); assert.match(html, /id="scheduleTemplate"/); assert.match(html, /id="recipientGroupActions"/); assert.match(html, /富格式通知/); assert.match(html, /SmsForwarder 配置/); assert.match(html, /timestamp.*sign/s); assert.match(page.headers.get('content-security-policy'), /default-src/);
 });
 
 test('login rejects bad credentials and protects API', async t => {
@@ -61,10 +62,12 @@ test('recipient CRUD, settings and console sending work end-to-end', async t => 
   assert.equal(create.status, 201); const recipient = (await create.json()).recipient;
   const settings = await fetch(`${ctx.base}/api/settings`, { method: 'PUT', headers, body: JSON.stringify({ appid: 'wx-app-id', secret: 'wx-secret', templateId: 'template-id', baseUrl: 'https://example.com/detail' }) });
   assert.equal(settings.status, 200);
-  const send = await fetch(`${ctx.base}/api/messages/send`, { method: 'POST', headers, body: JSON.stringify({ title: '磁盘告警', content: '磁盘空间低于 10%', recipientIds: [recipient.id] }) });
+  const richData = { first: { value: '恭喜您获得优惠券', color: '#173177' }, keyword1: { value: '100元现金券', color: '#ff8c00' }, keyword2: { value: 'WXPush', color: '#ff8c00' }, keyword3: { value: '2026年08月20日', color: '#ff8c00' }, keyword4: { value: '仅限本店使用', color: '#333333' }, remark: { value: '点击详情查看', color: '#ff0000' } };
+  const send = await fetch(`${ctx.base}/api/messages/send`, { method: 'POST', headers, body: JSON.stringify({ title: '磁盘告警', content: '磁盘空间低于 10%', recipientIds: [recipient.id], wechatTemplateId: RICH_TEMPLATE_ID, wechatData: richData }) });
   assert.equal(send.status, 200); const sent = await send.json(); assert.equal(sent.successCount, 1);
+  const wechatBody = JSON.parse(ctx.calls.at(-1).body); assert.equal(wechatBody.template_id, RICH_TEMPLATE_ID); assert.deepEqual(wechatBody.data, richData);
   const messages = await fetch(`${ctx.base}/api/messages`, { headers: { cookie } }); const list = (await messages.json()).messages;
-  assert.equal(list.length, 1); assert.equal(list[0].status, 'success'); assert.equal(ctx.calls.length, 2);
+  assert.equal(list.length, 1); assert.equal(list[0].status, 'success'); assert.equal(list[0].wechat_template_id, RICH_TEMPLATE_ID); assert.equal(list[0].wechat_data.keyword1.value, '100元现金券'); assert.equal(ctx.calls.length, 2);
   const deleteMessage = await fetch(`${ctx.base}/api/messages/${list[0].id}`, { method: 'DELETE', headers: { cookie } }); assert.equal(deleteMessage.status, 200);
   const afterDelete = await fetch(`${ctx.base}/api/messages`, { headers: { cookie } }); assert.equal((await afterDelete.json()).messages.length, 0);
   const firstId = ctx.store.addMessage({ title: '记录一', content: '测试', recipients: ['openid-test-user'], status: 'success', successCount: 1 });
@@ -98,8 +101,9 @@ test('templates, scoped tokens, schedules, detail page and exports work', async 
   await fetch(`${ctx.base}/api/recipients`, { method: 'POST', headers, body: JSON.stringify({ name: '自动化用户', openid: 'openid-automation' }) });
   await fetch(`${ctx.base}/api/settings`, { method: 'PUT', headers, body: JSON.stringify({ appid: 'appid', secret: 'secret', templateId: 'template', baseUrl: ctx.base }) });
 
-  const templateCreate = await fetch(`${ctx.base}/api/templates`, { method: 'POST', headers, body: JSON.stringify({ name: 'NAS 告警', title: '磁盘告警', content: '剩余空间不足' }) });
+  const templateCreate = await fetch(`${ctx.base}/api/templates`, { method: 'POST', headers, body: JSON.stringify({ name: 'NAS 告警', title: '磁盘告警', content: '剩余空间不足', wechatTemplateId: RICH_TEMPLATE_ID, wechatData: { first: { value: '富格式模板', color: '#173177' } } }) });
   assert.equal(templateCreate.status, 201); const template = (await templateCreate.json()).template;
+  assert.equal(template.wechat_template_id, RICH_TEMPLATE_ID); assert.equal(template.wechat_data.first.value, '富格式模板');
   const templateList = await fetch(`${ctx.base}/api/templates`, { headers: { cookie } }); assert.equal((await templateList.json()).templates.length, 1);
   const templateDelete = await fetch(`${ctx.base}/api/templates/${template.id}`, { method: 'DELETE', headers: { cookie } }); assert.equal(templateDelete.status, 200);
 

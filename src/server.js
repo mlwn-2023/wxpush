@@ -129,12 +129,12 @@ export function createApp(options = {}) {
     if (retryMatch && req.method === 'POST') {
       const original = store.getMessage(Number(retryMatch[1]));
       if (!original) return json(res, 404, { error: '推送记录不存在' });
-      return sendAndRecord(res, { title: original.title, content: original.content, recipients: original.recipients, source: 'retry' });
+      return sendAndRecord(res, { title: original.title, content: original.content, recipients: original.recipients, wechatTemplateId: original.wechat_template_id, wechatData: original.wechat_data, source: 'retry' });
     }
     if (req.method === 'POST' && url.pathname === '/api/messages/send') {
       const body = await readJson(req);
       const recipients = resolveRecipients(body, store);
-      return sendAndRecord(res, { title: body.title, content: body.content, recipients, source: 'console' });
+      return sendAndRecord(res, { title: body.title, content: body.content, recipients, wechatTemplateId: body.wechatTemplateId, wechatData: body.wechatData, source: 'console' });
     }
     if (req.method === 'GET' && url.pathname === '/api/templates') return json(res, 200, { templates: store.listTemplates() });
     if (req.method === 'POST' && url.pathname === '/api/templates') { const body=validateTemplate(await readJson(req)); const id=store.addTemplate(body); return json(res,201,{template:store.getTemplate(id)}); }
@@ -152,7 +152,7 @@ export function createApp(options = {}) {
     if(scheduleMatch&&req.method==='PUT'){const body=validateSchedule(await readJson(req));if(!store.updateSchedule(Number(scheduleMatch[1]),body))return json(res,404,{error:'定时任务不存在'});return json(res,200,{schedule:store.getSchedule(Number(scheduleMatch[1]))});}
     if(scheduleMatch&&req.method==='DELETE'){if(!store.deleteSchedule(Number(scheduleMatch[1])))return json(res,404,{error:'定时任务不存在'});return json(res,200,{ok:true});}
     const scheduleRun=url.pathname.match(/^\/api\/schedules\/(\d+)\/run$/);
-    if(scheduleRun&&req.method==='POST'){const schedule=store.getSchedule(Number(scheduleRun[1]));if(!schedule)return json(res,404,{error:'定时任务不存在'});try{const result=await dispatchMessage({title:schedule.title,content:schedule.content,recipients:resolveScheduleRecipients(schedule),source:'schedule'});store.updateScheduleRun(schedule.id,{enabled:schedule.enabled,nextRunAt:schedule.next_run_at,status:result.status,error:result.error});return json(res,result.successCount?200:502,result);}catch(error){store.updateScheduleRun(schedule.id,{enabled:schedule.enabled,nextRunAt:schedule.next_run_at,status:'failed',error:error.message});return json(res,502,{error:error.message});}}
+    if(scheduleRun&&req.method==='POST'){const schedule=store.getSchedule(Number(scheduleRun[1]));if(!schedule)return json(res,404,{error:'定时任务不存在'});try{const result=await dispatchMessage({title:schedule.title,content:schedule.content,recipients:resolveScheduleRecipients(schedule),wechatTemplateId:schedule.wechat_template_id,wechatData:schedule.wechat_data,source:'schedule'});store.updateScheduleRun(schedule.id,{enabled:schedule.enabled,nextRunAt:schedule.next_run_at,status:result.status,error:result.error});return json(res,result.successCount?200:502,result);}catch(error){store.updateScheduleRun(schedule.id,{enabled:schedule.enabled,nextRunAt:schedule.next_run_at,status:'failed',error:error.message});return json(res,502,{error:error.message});}}
     if(req.method==='GET'&&url.pathname==='/api/data/messages.csv')return serveCsv(res,store.allMessages());
     if(req.method==='GET'&&url.pathname==='/api/data/backup'){store.checkpoint();const bytes=await readFile(store.filename);res.writeHead(200,{'content-type':'application/vnd.sqlite3','content-disposition':`attachment; filename="wxpush-${new Date().toISOString().slice(0,10)}.db"`,'content-length':bytes.length});return res.end(bytes);}
     if(req.method==='POST'&&url.pathname==='/api/data/cleanup'){const days=Number(store.getSetting('retention_days','90'));return json(res,200,{ok:true,deleted:store.cleanupMessages(days)});}
@@ -211,7 +211,7 @@ export function createApp(options = {}) {
       : groups.length
         ? store.enabledOpenidsByGroups(groups)
         : store.enabledOpenids();
-    return sendAndRecord(res, { title: params.title || params.from || 'SmsForwarder', content: params.content, recipients, source: 'api', legacy: true });
+    return sendAndRecord(res, { title: params.title || params.from || 'SmsForwarder', content: params.content, recipients, wechatTemplateId: params.templateId || params.template_id, wechatData: params.wechatData || params.data, source: 'api', legacy: true });
   }
 
   async function sendAndRecord(res, input) {
@@ -229,12 +229,14 @@ export function createApp(options = {}) {
     if (!title || !content) throw httpError(400, '标题和内容不能为空');
     if (!input.recipients.length) throw httpError(400, '请至少选择一个收件人');
     const config = getConfig(store, appKey);
+    const wechatTemplateId = validateWechatTemplateId(input.wechatTemplateId || config.templateId);
+    const wechatData = validateWechatData(input.wechatData, title, content);
     const publicId = randomBytes(16).toString('hex');
-    const id = store.addMessage({ publicId, title, content, recipients: input.recipients, status: 'sending', source: input.source });
+    const id = store.addMessage({ publicId, title, content, recipients: input.recipients, wechatTemplateId, wechatData, status: 'sending', source: input.source });
     try {
-      if (!config.configured) throw new Error('微信配置不完整，请先在系统设置中填写');
+      if (!config.appid || !config.secret || !wechatTemplateId) throw new Error('微信配置不完整，请先在系统设置中填写');
       const detailUrl = buildDetailUrl(config.baseUrl, publicId);
-      const results = await sendWechatMessage(config, { title, content, detailUrl }, input.recipients, fetchImpl, { maxAttempts: 3, retryDelayMs: options.retryDelayMs });
+      const results = await sendWechatMessage({ ...config, templateId: wechatTemplateId }, { title, content, detailUrl, wechatData }, input.recipients, fetchImpl, { maxAttempts: 3, retryDelayMs: options.retryDelayMs });
       const successCount = results.filter(r => r.ok).length;
       const status = successCount === results.length ? 'success' : successCount ? 'partial' : 'failed';
       const attempts = Math.max(...results.map(r=>r.attempts||1),1);
@@ -252,7 +254,7 @@ export function createApp(options = {}) {
       const next = nextScheduleRun(schedule);
       store.updateScheduleRun(schedule.id,{enabled:next.enabled,nextRunAt:next.at,status:'running'});
       try {
-        const result = await dispatchMessage({title:schedule.title,content:schedule.content,recipients:resolveScheduleRecipients(schedule),source:'schedule'});
+        const result = await dispatchMessage({title:schedule.title,content:schedule.content,recipients:resolveScheduleRecipients(schedule),wechatTemplateId:schedule.wechat_template_id,wechatData:schedule.wechat_data,source:'schedule'});
         store.updateScheduleRun(schedule.id,{enabled:next.enabled,nextRunAt:next.at,status:result.status,error:result.error});
       } catch (error) { store.updateScheduleRun(schedule.id,{enabled:next.enabled,nextRunAt:next.at,status:'failed',error:error.message}); }
     }
@@ -297,10 +299,12 @@ function validateRecipient(body) {
   return item;
 }
 
-function validateTemplate(body){const item={name:String(body.name||'').trim(),title:String(body.title||'').trim(),content:String(body.content||'').trim()};if(!item.name||!item.title||!item.content)throw httpError(400,'模板名称、标题和内容不能为空');if(item.name.length>80||item.title.length>80||item.content.length>2000)throw httpError(400,'模板内容超出长度限制');return item;}
-function validateSchedule(body){const recurrence=['once','daily','weekly'].includes(body.recurrence)?body.recurrence:'once';const date=new Date(body.nextRunAt);if(!String(body.name||'').trim()||!String(body.title||'').trim()||!String(body.content||'').trim())throw httpError(400,'任务名称、标题和内容不能为空');if(Number.isNaN(date.getTime()))throw httpError(400,'请选择有效的发送时间');return{name:String(body.name).trim(),title:String(body.title).trim(),content:String(body.content).trim(),recipientIds:[...new Set(Array.isArray(body.recipientIds)?body.recipientIds.map(Number).filter(Number.isSafeInteger):[])],sendAll:body.sendAll!==false,recurrence,nextRunAt:date.toISOString(),enabled:body.enabled!==false};}
+function validateTemplate(body){const item={name:String(body.name||'').trim(),title:String(body.title||'').trim(),content:String(body.content||'').trim(),wechatTemplateId:body.wechatTemplateId?validateWechatTemplateId(body.wechatTemplateId):'',wechatData:validateWechatData(body.wechatData,String(body.title||''),String(body.content||''),true)};if(!item.name||!item.title||!item.content)throw httpError(400,'模板名称、标题和内容不能为空');if(item.name.length>80||item.title.length>80||item.content.length>2000)throw httpError(400,'模板内容超出长度限制');return item;}
+function validateSchedule(body){const recurrence=['once','daily','weekly'].includes(body.recurrence)?body.recurrence:'once';const date=new Date(body.nextRunAt);if(!String(body.name||'').trim()||!String(body.title||'').trim()||!String(body.content||'').trim())throw httpError(400,'任务名称、标题和内容不能为空');if(Number.isNaN(date.getTime()))throw httpError(400,'请选择有效的发送时间');return{name:String(body.name).trim(),title:String(body.title).trim(),content:String(body.content).trim(),recipientIds:[...new Set(Array.isArray(body.recipientIds)?body.recipientIds.map(Number).filter(Number.isSafeInteger):[])],sendAll:body.sendAll!==false,recurrence,nextRunAt:date.toISOString(),enabled:body.enabled!==false,wechatTemplateId:body.wechatTemplateId?validateWechatTemplateId(body.wechatTemplateId):'',wechatData:validateWechatData(body.wechatData,String(body.title||''),String(body.content||''),true)};}
 function nextScheduleRun(schedule){if(schedule.recurrence==='once')return{enabled:false,at:schedule.next_run_at};const date=new Date(schedule.next_run_at),step=schedule.recurrence==='weekly'?7:1;do{date.setUTCDate(date.getUTCDate()+step);}while(date<=new Date());return{enabled:true,at:date.toISOString()};}
 function buildDetailUrl(baseUrl,publicId){const base=String(baseUrl||'').replace(/\/+$/,'');if(!base)return'';return `${base.endsWith('/detail')?base:`${base}/detail`}/${publicId}`;}
+function validateWechatTemplateId(value){const id=String(value||'').trim();if(!id||id.length>160)throw httpError(400,'微信模板 ID 无效');return id;}
+function validateWechatData(input,title,content,allowEmpty=false){if(input===undefined||input===null||input==='')return allowEmpty?{}:{title:{value:title},content:{value:content}};let raw=input;if(typeof raw==='string'){try{raw=JSON.parse(raw);}catch{throw httpError(400,'微信模板字段 data 必须是有效 JSON');}}if(!raw||typeof raw!=='object'||Array.isArray(raw))throw httpError(400,'微信模板字段 data 格式不正确');const entries=Object.entries(raw);if(entries.length>20)throw httpError(400,'微信模板字段最多 20 项');const result={};for(const[key,item]of entries){if(!/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(key))throw httpError(400,`微信模板字段名无效：${key}`);const value=String(typeof item==='object'&&item!==null?item.value??'':item??'');if(value.length>2000)throw httpError(400,`微信模板字段 ${key} 内容过长`);const color=typeof item==='object'&&item!==null?String(item.color||'').trim():'';if(color&&!/^#[0-9a-f]{6}$/i.test(color))throw httpError(400,`微信模板字段 ${key} 颜色格式错误`);result[key]=color?{value,color}:{value};}return Object.keys(result).length||allowEmpty?result:{title:{value:title},content:{value:content}};}
 
 function serveDetail(res,message){if(!message){res.writeHead(404,{'content-type':'text/html; charset=utf-8'});return res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>消息不存在</title><body><main><h1>消息不存在或已被删除</h1></main></body></html>');}const html=`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(message.title)} · WXPush</title><link rel="stylesheet" href="/detail.css"></head><body><main><div class="brand"><span></span>WXPush</div><article><p class="eyebrow">MESSAGE DETAIL</p><h1>${escapeHtml(message.title)}</h1><div class="meta"><span>${formatBeijing(message.created_at)}</span><b>${message.status==='success'?'已送达':'通知消息'}</b></div><div class="content">${escapeHtml(message.content)}</div></article><footer>由 WXPush 私有消息服务安全送达</footer></main></body></html>`;res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'private, max-age=60'});res.end(html);}
 function serveCsv(res,messages){const rows=[['ID','标题','内容','接收数','成功数','状态','来源','发送时间'],...messages.map(m=>[m.id,m.title,m.content,m.recipient_count,m.success_count,m.status,m.source,m.created_at])];const csv='\uFEFF'+rows.map(row=>row.map(csvCell).join(',')).join('\r\n');res.writeHead(200,{'content-type':'text/csv; charset=utf-8','content-disposition':`attachment; filename="wxpush-messages-${new Date().toISOString().slice(0,10)}.csv"`});res.end(csv);}
