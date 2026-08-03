@@ -24,7 +24,7 @@ async function sendOne(accessToken, config, message, openid, fetchImpl, attempt)
     const response = await fetchImpl(`https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${encodeURIComponent(accessToken)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json;charset=utf-8' },
-      body: JSON.stringify({ touser: openid, template_id: config.templateId, url: message.detailUrl || '', data: { title: { value: message.title }, content: { value: message.content } } }),
+      body: JSON.stringify({ touser: openid, template_id: config.templateId, url: message.detailUrl || '', data: { title: { value: message.title }, content: { value: message.content }, time: { value: formatBeijingTime() } } }),
       signal: AbortSignal.timeout(15000)
     });
     const data = await response.json();
@@ -44,3 +44,8 @@ async function getAccessToken(config, fetchImpl) {
 
 function isRetryable(code) { return [-1, -1_000, 40001, 40014, 42001, 45009].includes(Number(code)); }
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function formatBeijingTime(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(date);
+  const get = type => parts.find(part => part.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
+}

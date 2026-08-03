@@ -63,6 +63,7 @@ test('recipient CRUD, settings and console sending work end-to-end', async t => 
   assert.equal(settings.status, 200);
   const send = await fetch(`${ctx.base}/api/messages/send`, { method: 'POST', headers, body: JSON.stringify({ title: '磁盘告警', content: '磁盘空间低于 10%', recipientIds: [recipient.id] }) });
   assert.equal(send.status, 200); const sent = await send.json(); assert.equal(sent.successCount, 1);
+  const wechatBody = JSON.parse(ctx.calls.at(-1).body); assert.equal(wechatBody.data.title.value, '磁盘告警'); assert.equal(wechatBody.data.content.value, '磁盘空间低于 10%'); assert.match(wechatBody.data.time.value, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   const messages = await fetch(`${ctx.base}/api/messages`, { headers: { cookie } }); const list = (await messages.json()).messages;
   assert.equal(list.length, 1); assert.equal(list[0].status, 'success'); assert.equal(ctx.calls.length, 2);
   const deleteMessage = await fetch(`${ctx.base}/api/messages/${list[0].id}`, { method: 'DELETE', headers: { cookie } }); assert.equal(deleteMessage.status, 200);

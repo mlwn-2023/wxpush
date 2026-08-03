@@ -1,6 +1,6 @@
 {
   "name": "wxpush-nas",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "private": true,
   "type": "module",
   "description": "WXPush self-hosted management console for NAS",
