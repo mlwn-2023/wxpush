@@ -40,7 +40,7 @@ function signedPayload(secret, body = {}) {
 test('health check and static console are available', async t => {
   const ctx = await setup(); t.after(ctx.close);
   const health = await fetch(`${ctx.base}/health`); assert.equal(health.status, 200); assert.equal((await health.json()).ok, true);
-  const page = await fetch(ctx.base); assert.equal(page.status, 200); const html = await page.text(); assert.match(html, /WXPush 管理台/); assert.match(html, /id="scheduleTemplate"/); assert.match(page.headers.get('content-security-policy'), /default-src/);
+  const page = await fetch(ctx.base); assert.equal(page.status, 200); const html = await page.text(); assert.match(html, /WXPush 管理台/); assert.match(html, /id="scheduleTemplate"/); assert.match(html, /SmsForwarder 配置/); assert.match(html, /timestamp.*sign/s); assert.match(page.headers.get('content-security-policy'), /default-src/);
 });
 
 test('login rejects bad credentials and protects API', async t => {
