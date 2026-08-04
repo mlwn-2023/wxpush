@@ -1,4 +1,4 @@
-# WXPush NAS 管理版
+# WXPush 管理版
 
 基于 [frankiejun/wxpush](https://github.com/frankiejun/wxpush) 改造的微信模板消息自托管服务。新增完整中文管理后台、SQLite 数据持久化、登录认证、收件人管理、推送记录和可视化配置，并保留原 `/wxsend` GET/POST API。
 
@@ -69,13 +69,13 @@ curl -X POST "http://localhost:3939/wxsend" \
 
 推荐传 `group=服务器告警` 按后台收件人分类发送；多个分类可用 `group=服务器告警|家庭通知`，POST JSON 也可传 `groups: ["服务器告警", "家庭通知"]`。仍可传 `userid=OPENID1|OPENID2` 临时覆盖分类和后台启用的收件人。
 
-## 飞牛 NAS 部署准备
+##部署准备
 
-1. 将整个项目目录上传到 NAS。
+1. 将整个项目目录上传到 服务器。
 2. 复制 `.env.example` 为 `.env`，至少修改 `ADMIN_PASSWORD`、`APP_KEY` 和 `API_TOKEN`。
-3. 在项目目录执行 `docker compose up -d --build`，或在飞牛 Docker Compose 界面导入 `docker-compose.yml`。
+3. 在项目目录执行 `docker compose up -d --build`，或在服务器 Docker Compose 界面导入 `docker-compose.yml`。
 4. 打开 `http://NAS_IP:3939`，登录后在“系统设置”填写微信配置。
-5. 将 `data` 目录纳入 NAS 备份计划。
+5. 将 `data` 目录纳入 服务器 备份计划。
 
 正式部署前，建议为管理后台配置 HTTPS 反向代理，不要直接把 3939 端口暴露到公网。
 
